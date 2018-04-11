@@ -1,3 +1,4 @@
+#include <TimerOne.h>
 
 enum LightPins { Green = 5, Amber = 6, Red = 7 };
 LightPins current_light = LightPins::Green;
@@ -34,6 +35,7 @@ void setup() {
   pinMode(toggle_mode_button, INPUT_PULLUP);
   attachInterrupt(1, toggleMode, FALLING);
 
+  Timer1.initialize(1000000); //Initialize timer to 1 second period
   startCycleLights();
 
   Serial.begin(9600);
@@ -66,7 +68,7 @@ void loop() {
 void toggleMode() {
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
-  if (interrupt_time - last_interrupt_time > 500) { // Debounce the falling edge interrupt, since buttons don't quite give a clean signal
+  if (interrupt_time - last_interrupt_time > 500) { // Debounce the falling edge interrupt to half a second, since buttons don't quite give a clean signal
     switch (current_mode) {
       case Cycle:
         current_mode = Mode::Party;
@@ -81,38 +83,19 @@ void toggleMode() {
 }
 
 void startPartyLights() {
-
-  cli();//stop interrupts
-
-  TCCR0A = 0;// set entire TCCR2A register to 0
-  TCCR0B = 0;// same for TCCR2B
-  TCNT0  = 0;//initialize counter value to 0
-  // set compare match register for 8khz increments
-  OCR0A = 249;// = (16*10^6) / (8000*8) - 1 (must be <256)
-  // turn on CTC mode
-  TCCR0A |= (1 << WGM01);
-  // Set CS21 bit for 8 prescaler
-  TCCR0B |= (1 << CS01);
-  // enable timer compare interrupt
-  TIMSK0 |= (1 << OCIE0A);
-
-  sei();//allow interrupts
+  digitalWrite(LightPins::Amber, HIGH); //turn off lights
+  digitalWrite(LightPins::Red, HIGH);
+  digitalWrite(LightPins::Green, HIGH);
+  Timer1.attachInterrupt(PartyISR, 100000); //set interrupt with 1 second period
 }
 
 void stopPartyLights() {
-  cli();//stop interrupts
-  
-  TCCR0A = 0;// set entire TCCR2A register to 0
-  TCCR0B = 0;// same for TCCR2B
-  TCNT0  = 0;//initialize counter value to 0
-  // set compare match register for 8khz increments
-  OCR0A = 0;// = (16*10^6) / (8000*8) - 1 (must be <256)
-  TIMSK0 |= (0 << OCIE0A);
-  sei();//allow interrupts
+  Timer1.detachInterrupt();
 }
 
 int party_tick = 0;
-ISR(TIMER0_COMPA_vect) { //timer2 ISR. Interrupt cycle of 8hz (1/8 second)
+
+void PartyISR() { //ISR for Party Mode
   party_tick = ++party_tick % (current_delay); //Advance or reset the tick
   if (!party_tick) { //If tick has reached the current_delay, advance the light and set new delay
     digitalWrite(current_light, HIGH); //turn off old light
@@ -137,41 +120,21 @@ void toggleCycleSpeed() {
 }
 
 void startCycleLights() {
-
-  cli();//stop interrupts
-
-  TCCR1A = 0;// set entire TCCR1A register to 0
-  TCCR1B = 0;// same for TCCR1B
-  TCNT1  = 0;//initialize counter value to 0
-  //set compare match register
-  OCR1A = 15624; //// = (16*10^6hz clock speed) / (1hz*1024 prescaler) - 1 (must be <65536)
-  // turn on CTC mode
-  TCCR1B |= (1 << WGM12);
-  // Set CS10 and CS12 bits for 1024 prescaler
-  TCCR1B |= (1 << CS12) | (1 << CS10);
-  // enable timer compare interrupt
-  TIMSK1 |= (1 << OCIE1A);
-
+  Timer1.attachInterrupt(CycleISR, 1000000); //set interrupt with 1 second period
   current_light = LightPins::Green;
   current_delay = LightDelay::GreenDelay;
   digitalWrite(LightPins::Amber, HIGH); //turn off amber and red lights
   digitalWrite(LightPins::Red, HIGH);
   digitalWrite(current_light, LOW); //turn on green light
-
-  sei();//allow interrupts
-
 }
 
 void stopCycleLights() {
-  cli();//stop interrupts
-  TIMSK1 |= (0 << OCIE1A);
-  sei();//allow interrupts
+  Timer1.detachInterrupt();
 }
 
 int tick = 0;
 
-ISR(TIMER1_COMPA_vect) { //timer1 ISR. Interrupt cycle of 1hz (1 second)
-
+void CycleISR() { //timer1 ISR. Interrupt cycle of 1hz (1 second) - ISR for Cycle Mode
   tick = ++ tick % (current_delay * delay_scalar); //Advance or reset the tick
   if (!tick) { //If tick has reached the current_delay, advance the light and set new delay
     digitalWrite(current_light, HIGH); //turn off old light
