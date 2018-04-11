@@ -175,7 +175,6 @@ void startCycleLights() {
   digitalWrite(LightPins::Amber, HIGH); //turn off amber and red lights
   digitalWrite(LightPins::Red, HIGH);
   digitalWrite(current_light, LOW); //turn on green light
-  
   attachInterrupt(0, toggleCycleSpeed, FALLING); // turn on speed toggle button 
 }
 
